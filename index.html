@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f4ec">
+  <title>Solve to Unlock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f6f4ec;
+      --ink: #173e39;
+      --muted: #6b7870;
+      --line: #d5d8cc;
+      --coral: #c65d42;
+      --green: #426e54;
+      --serif: Georgia, "Times New Roman", serif;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background-color: var(--paper);
+      background-image: repeating-linear-gradient(0deg, transparent 0 39px, rgb(23 62 57 / 3%) 39px 40px);
+    }
+
+    main {
+      width: min(100% - 40px, 920px);
+      margin: 0 auto;
+      padding: 46px 0 32px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--coral);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(36px, 7vw, 62px);
+      font-weight: 400;
+      line-height: 1.02;
+    }
+
+    .intro {
+      margin: 12px 0 24px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .gamebar {
+      display: flex;
+      min-height: 46px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0 4px;
+    }
+
+    #status { color: var(--muted); font-size: 13px; }
+
+    .gamebar-actions { display: flex; align-items: center; gap: 18px; }
+
+    .move-count {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    button, .unlock {
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      color: var(--ink);
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--green); background: rgb(255 255 255 / 58%); }
+    button:focus-visible, .unlock:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
+
+    .unlock {
+      border-color: var(--green);
+      color: #fff;
+      background: var(--green);
+    }
+
+    .unlock:hover { background: #355c45; }
+    [hidden] { display: none !important; }
+
+    .board-wrap { width: 100%; }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    @media (max-width: 540px) {
+      main { width: min(100% - 28px, 920px); padding-top: 30px; }
+      .intro { margin-bottom: 18px; }
+      .gamebar { align-items: flex-start; }
+      .gamebar-actions { gap: 8px; }
+      .move-count { align-self: center; }
+      footer { font-size: 10px; }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      main { animation: arrive 480ms ease-out both; }
+      @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">A small detour</p>
+    <h1>Solve to Unlock</h1>
+    <p class="intro">Fit every piece to unlock the website.</p>
+
+    <div class="gamebar">
+      <span id="status" role="status" aria-live="polite">Drag the pieces into the picture.</span>
+      <div class="gamebar-actions">
+        <span class="move-count" id="move-count">0 / 12</span>
+        <a class="unlock" id="unlock" href="#" target="_blank" rel="noopener noreferrer" hidden>Open the website ↗</a>
+        <button id="reset" type="button" aria-label="Shuffle puzzle pieces">Shuffle</button>
+      </div>
+    </div>
+
+    <div class="board-wrap">
+      <canvas id="puzzle" width="900" height="900" aria-label="Jigsaw puzzle. Drag the twelve pieces from below the board into their matching spaces."></canvas>
+    </div>
+    <footer><span>Twelve pieces. One little reveal.</span><span>Drag each piece into place</span></footer>
+  </main>
+
+  <script>
+    (() => {
+      // Put your image beside index.html and set its filename and destination URL here.
+      const PUZZLE_IMAGE_URL = "puzzle.png";
+      const DESTINATION_URL = "https://wearitbareit.my.canva.site/temporal-vs-knowledge";
+      const canvas = document.querySelector("#puzzle");
+      const context = canvas.getContext("2d");
+      const status = document.querySelector("#status");
+      const moveCount = document.querySelector("#move-count");
+      const unlock = document.querySelector("#unlock");
+      const columns = 4;
+      const rows = 3;
+      const board = { x: 50, y: 48, width: 800, height: 400 };
+      const cell = { width: board.width / columns, height: board.height / rows };
+      const trayScale = 0.54;
+      const trayTop = 542;
+      const pieces = [];
+      let dragged = null;
+      let placedCount = 0;
+
+      const artwork = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600">
+        <defs>
+          <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#a6d0c5"/><stop offset="1" stop-color="#e5dcae"/></linearGradient>
+          <linearGradient id="water" x2="0" y2="1"><stop stop-color="#629e9a"/><stop offset="1" stop-color="#315e67"/></linearGradient>
+          <clipPath id="arch"><path d="M492 500V278a108 108 0 0 1 216 0v222z"/></clipPath>
+        </defs>
+        <rect width="1200" height="600" fill="url(#sky)"/>
+        <circle cx="934" cy="130" r="67" fill="#e9a85e"/>
+        <path d="M0 355 154 178l135 158 177-221 194 259 172-191 190 201 103-129 75 85v260H0z" fill="#698576"/>
+        <path d="m0 393 180-119 139 121 194-154 169 145 193-145 150 128 175-108v239H0z" fill="#496e59"/>
+        <path d="M0 419q180-85 354-24t344 0 502 23v182H0z" fill="url(#water)"/>
+        <path d="M-20 498q192-59 380-4t390 0 470-5" fill="none" stroke="#b2d3ba" stroke-width="11" opacity=".57"/>
+        <path d="M-30 543q212-53 404 1t386 0 480-4" fill="none" stroke="#d2d9b9" stroke-width="6" opacity=".55"/>
+        <path d="M324 600 438 448h327L865 600z" fill="#c48a5b"/>
+        <path d="M390 600 476 463h251l86 137z" fill="#e5bf83"/>
+        <path d="M478 600 507 472h191l30 128z" fill="#4f7867"/>
+        <path d="M492 500V278a108 108 0 0 1 216 0v222z" fill="#c65d42"/>
+        <g clip-path="url(#arch)">
+          <rect x="490" y="166" width="220" height="340" fill="#a6d0c5"/>
+          <path d="M480 368 539 285l49 63 58-96 79 112v146H480z" fill="#496e59"/>
+          <path d="M480 420q122-43 230 0v120H480z" fill="#477d79"/>
+          <path d="M478 452q107-28 231 2" fill="none" stroke="#e5dcae" stroke-width="8" opacity=".75"/>
+        </g>
+        <path d="M480 502V278a120 120 0 0 1 240 0v224h-28V278a92 92 0 0 0-184 0v224z" fill="#ad503a"/>
+        <path d="M0 600V489q93-83 200-38 74 31 117 149zM1200 600V447q-91-53-164-8-65 39-91 161z" fill="#365b49"/>
+        <g fill="#e6d19b"><circle cx="106" cy="390" r="6"/><circle cx="143" cy="378" r="4"/><circle cx="1090" cy="384" r="6"/><circle cx="1121" cy="399" r="4"/></g>
+      </svg>`;
+      const image = new Image();
+      image.addEventListener("load", draw);
+      image.addEventListener("error", () => {
+        status.textContent = "The puzzle image could not be loaded. Check PUZZLE_IMAGE_URL in the code.";
+        draw();
+      });
+      image.src = PUZZLE_IMAGE_URL || `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artwork)}`;
+
+      const verticalEdges = Array.from({ length: rows }, () => Array.from({ length: columns - 1 }, randomTab));
+      const horizontalEdges = Array.from({ length: rows - 1 }, () => Array.from({ length: columns }, randomTab));
+
+      function randomTab() { return Math.random() < 0.5 ? -1 : 1; }
+
+      function getEdges(column, row) {
+        return {
+          top: row === 0 ? 0 : -horizontalEdges[row - 1][column],
+          right: column === columns - 1 ? 0 : verticalEdges[row][column],
+          bottom: row === rows - 1 ? 0 : horizontalEdges[row][column],
+          left: column === 0 ? 0 : -verticalEdges[row][column - 1]
+        };
+      }
+
+      function traceEdge(ctx, x, y, length, nx, ny, sign, bump) {
+        const point = (t, offset = 0) => [x + length * t + nx * offset, y + ny * offset];
+        const lineTo = (t) => { const [px, py] = point(t); ctx.lineTo(px, py); };
+        if (!sign) { lineTo(1); return; }
+        const curveTo = (a, b, c, d, e, f, g, h) => {
+          const p1 = point(a, b * bump * sign);
+          const p2 = point(c, d * bump * sign);
+          const p3 = point(e, f * bump * sign);
+          const p4 = point(g, h * bump * sign);
+          ctx.bezierCurveTo(...p1, ...p2, ...p3, ...p4);
+        };
+        lineTo(0.34);
+        curveTo(0.38, 0, 0.39, 0.42, 0.45, 0.46, 0.5, 0.46);
+        curveTo(0.55, 0.46, 0.61, 0.42, 0.62, 0, 0.66, 0);
+        lineTo(1);
+      }
+
+      function tracePiece(ctx, x, y, width, height, edges) {
+        const bump = Math.min(width, height) * 0.22;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        traceEdge(ctx, x, y, width, 0, -1, edges.top, bump);
+        traceEdge(ctx, x + width, y, height, 1, 0, edges.right, bump);
+        traceEdge(ctx, x + width, y + height, -width, 0, 1, edges.bottom, bump);
+        traceEdge(ctx, x, y + height, -height, -1, 0, edges.left, bump);
+        ctx.closePath();
+      }
+
+      function pieceBounds(piece) {
+        const scale = piece === dragged || piece.placed ? 1 : trayScale;
+        return { scale, width: cell.width * scale, height: cell.height * scale };
+      }
+
+      function drawPiece(piece) {
+        const { scale, width, height } = pieceBounds(piece);
+        const shapeX = piece.x;
+        const shapeY = piece.y;
+        context.save();
+        context.translate(shapeX, shapeY);
+        context.scale(scale, scale);
+        tracePiece(context, 0, 0, cell.width, cell.height, piece.edges);
+        context.save();
+        context.clip();
+        if (image.complete && image.naturalWidth) {
+          const fit = Math.max(board.width / image.naturalWidth, board.height / image.naturalHeight);
+          const imageWidth = image.naturalWidth * fit;
+          const imageHeight = image.naturalHeight * fit;
+          const imageX = (board.width - imageWidth) / 2 - piece.column * cell.width;
+          const imageY = (board.height - imageHeight) / 2 - piece.row * cell.height;
+          context.drawImage(image, imageX, imageY, imageWidth, imageHeight);
+        } else {
+          context.fillStyle = "#8ebbb0";
+          context.fillRect(0, 0, cell.width, cell.height);
+        }
+        context.restore();
+        tracePiece(context, 0, 0, cell.width, cell.height, piece.edges);
+        context.lineWidth = piece === dragged ? 3 : 2;
+        context.strokeStyle = piece === dragged ? "#c65d42" : "rgba(255,255,255,.94)";
+        context.stroke();
+        context.restore();
+        return { width, height };
+      }
+
+      function draw() {
+        const scale = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width) return;
+        const pixelWidth = Math.round(rect.width * scale);
+        const pixelHeight = Math.round(rect.width * scale);
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+          canvas.width = pixelWidth;
+          canvas.height = pixelHeight;
+        }
+        context.setTransform(pixelWidth / 900, 0, 0, pixelHeight / 900, 0, 0);
+        context.clearRect(0, 0, 900, 900);
+
+        context.save();
+        context.shadowColor = "rgba(23,62,57,.12)";
+        context.shadowBlur = 16;
+        context.shadowOffsetY = 7;
+        context.fillStyle = "#fffdf8";
+        context.fillRect(board.x - 8, board.y - 8, board.width + 16, board.height + 16);
+        context.restore();
+
+        for (const piece of pieces) {
+          const x = board.x + piece.column * cell.width;
+          const y = board.y + piece.row * cell.height;
+          tracePiece(context, x, y, cell.width, cell.height, piece.edges);
+          context.fillStyle = "#e6e5dc";
+          context.fill();
+          context.lineWidth = 2;
+          context.strokeStyle = "#fffdf8";
+          context.stroke();
+        }
+
+        for (const piece of pieces) if (piece.placed) drawPiece(piece);
+        for (const piece of pieces) if (piece !== dragged && !piece.placed) drawPiece(piece);
+        if (dragged) {
+          context.save();
+          context.shadowColor = "rgba(23,62,57,.24)";
+          context.shadowBlur = 15;
+          context.shadowOffsetY = 7;
+          drawPiece(dragged);
+          context.restore();
+        }
+      }
+
+      function shuffle() {
+        const slots = pieces.map((_, index) => ({
+          x: 55 + (index % columns) * 202 + 25,
+          y: trayTop + Math.floor(index / columns) * 116
+        }));
+        for (let index = slots.length - 1; index > 0; index--) {
+          const other = Math.floor(Math.random() * (index + 1));
+          [slots[index], slots[other]] = [slots[other], slots[index]];
+        }
+        pieces.forEach((piece, index) => {
+          piece.trayX = slots[index].x;
+          piece.trayY = slots[index].y;
+          piece.x = piece.trayX;
+          piece.y = piece.trayY;
+          piece.placed = false;
+        });
+        dragged = null;
+        placedCount = 0;
+        moveCount.textContent = `0 / ${pieces.length}`;
+        unlock.hidden = true;
+        status.textContent = "Drag the pieces into the picture.";
+        draw();
+      }
+
+      function canvasPoint(event) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: (event.clientX - rect.left) * 900 / rect.width, y: (event.clientY - rect.top) * 900 / rect.width };
+      }
+
+      function onPointerDown(event) {
+        const point = canvasPoint(event);
+        for (let index = pieces.length - 1; index >= 0; index--) {
+          const piece = pieces[index];
+          if (piece.placed) continue;
+          const { width, height } = pieceBounds(piece);
+          if (point.x < piece.x || point.x > piece.x + width || point.y < piece.y || point.y > piece.y + height) continue;
+          dragged = piece;
+          dragged.x = point.x - cell.width / 2;
+          dragged.y = point.y - cell.height / 2;
+          canvas.setPointerCapture(event.pointerId);
+          canvas.style.cursor = "grabbing";
+          draw();
+          return;
+        }
+      }
+
+      function onPointerMove(event) {
+        if (!dragged) return;
+        const point = canvasPoint(event);
+        dragged.x = point.x - cell.width / 2;
+        dragged.y = point.y - cell.height / 2;
+        draw();
+      }
+
+      function onPointerUp() {
+        if (!dragged) return;
+        const piece = dragged;
+        const targetX = board.x + piece.column * cell.width;
+        const targetY = board.y + piece.row * cell.height;
+        if (Math.abs(piece.x - targetX) < cell.width * 0.36 && Math.abs(piece.y - targetY) < cell.height * 0.36) {
+          piece.x = targetX;
+          piece.y = targetY;
+          piece.placed = true;
+          placedCount++;
+          if (placedCount === pieces.length) {
+            updateUnlock();
+          } else {
+            status.textContent = "Nice fit. Keep going.";
+          }
+        } else {
+          piece.x = piece.trayX;
+          piece.y = piece.trayY;
+          status.textContent = "Not quite. Try another spot.";
+        }
+        dragged = null;
+        canvas.style.cursor = "grab";
+        moveCount.textContent = `${placedCount} / ${pieces.length}`;
+        draw();
+      }
+
+      function updateUnlock() {
+        unlock.hidden = true;
+        let url;
+        try {
+          url = new URL(DESTINATION_URL);
+        } catch {
+          status.textContent = "Puzzle solved. Set DESTINATION_URL in the code to unlock the website.";
+          return;
+        }
+        if (url.protocol !== "https:" && url.protocol !== "http:") {
+          status.textContent = "Set DESTINATION_URL to an http:// or https:// address.";
+          return;
+        }
+        unlock.href = url.href;
+        unlock.hidden = false;
+        status.textContent = "Puzzle solved. Your website is unlocked.";
+      }
+
+      for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+          pieces.push({ column, row, edges: getEdges(column, row), x: 0, y: 0, placed: false });
+        }
+      }
+
+      document.querySelector("#reset").addEventListener("click", shuffle);
+      canvas.addEventListener("pointerdown", onPointerDown);
+      canvas.addEventListener("pointermove", onPointerMove);
+      canvas.addEventListener("pointerup", onPointerUp);
+      canvas.addEventListener("pointercancel", onPointerUp);
+      canvas.addEventListener("pointerleave", () => { if (!dragged) canvas.style.cursor = "grab"; });
+      window.addEventListener("resize", draw);
+      canvas.style.cursor = "grab";
+      shuffle();
+    })();
+  </script>
+</body>
+</html>
