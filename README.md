@@ -1,4 +1,3 @@
-
 # A Little Puzzle
 
 A small, standalone jigsaw page. Visitors solve the puzzle to unlock its configured website URL.
